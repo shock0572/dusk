@@ -84,9 +84,11 @@ fn draw_file_list(f: &mut Frame, app: &mut App, area: Rect) {
         app.scroll_offset = app.selected - visible_height + 1;
     }
 
+    let has_parent = app.has_parent();
+    let offset = if has_parent { 1 } else { 0 };
     let children = app.sorted_children();
 
-    if children.is_empty() {
+    if children.is_empty() && !has_parent {
         let empty = Paragraph::new("  (empty directory)")
             .style(Style::default().fg(Color::DarkGray));
         f.render_widget(empty, area);
@@ -94,14 +96,19 @@ fn draw_file_list(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let parent_size = app.current_entry().size.max(1) as f64;
+    let total_count = children.len() + offset;
 
-    let rows: Vec<Row> = children
-        .iter()
-        .enumerate()
-        .skip(app.scroll_offset)
-        .take(visible_height)
-        .map(|(i, entry)| entry_to_row(entry, i == app.selected, parent_size))
-        .collect();
+    let mut rows: Vec<Row> = Vec::with_capacity(visible_height);
+    for i in app.scroll_offset..total_count.min(app.scroll_offset + visible_height) {
+        if has_parent && i == 0 {
+            rows.push(dotdot_row(i == app.selected));
+        } else {
+            let child_idx = i - offset;
+            if let Some(entry) = children.get(child_idx) {
+                rows.push(entry_to_row(entry, i == app.selected, parent_size));
+            }
+        }
+    }
 
     let widths = [
         Constraint::Length(10),
@@ -113,6 +120,24 @@ fn draw_file_list(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(rows, widths).column_spacing(1);
 
     f.render_widget(table, area);
+}
+
+fn dotdot_row(selected: bool) -> Row<'static> {
+    let style = if selected {
+        Style::default()
+            .bg(Color::Rgb(40, 40, 60))
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    Row::new(vec![
+        Span::styled("         ", style),
+        Span::styled("      ", style),
+        Span::styled(format!("[{}]", " ".repeat(BAR_WIDTH)), style),
+        Span::styled("/..", style),
+    ])
 }
 
 fn entry_to_row<'a>(entry: &Entry, selected: bool, parent_size: f64) -> Row<'a> {

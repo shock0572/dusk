@@ -79,6 +79,18 @@ impl App {
         None
     }
 
+    pub fn has_parent(&self) -> bool {
+        !self.path_stack.is_empty()
+    }
+
+    fn child_offset(&self) -> usize {
+        if self.has_parent() { 1 } else { 0 }
+    }
+
+    pub fn display_count(&self) -> usize {
+        self.current_entry().children.len() + self.child_offset()
+    }
+
     pub fn sorted_children(&self) -> Vec<&Entry> {
         let entry = self.current_entry();
         let mut kids: Vec<&Entry> = entry.children.iter().collect();
@@ -91,7 +103,7 @@ impl App {
     }
 
     pub fn move_down(&mut self) {
-        let count = self.current_entry().children.len();
+        let count = self.display_count();
         if count > 0 && self.selected < count - 1 {
             self.selected += 1;
         }
@@ -104,7 +116,7 @@ impl App {
     }
 
     pub fn page_down(&mut self, page_size: usize) {
-        let count = self.current_entry().children.len();
+        let count = self.display_count();
         if count == 0 {
             return;
         }
@@ -116,10 +128,16 @@ impl App {
     }
 
     pub fn enter_selected(&mut self) {
+        if self.has_parent() && self.selected == 0 {
+            self.go_back();
+            return;
+        }
+
+        let child_idx = self.selected - self.child_offset();
         let target = {
             let children = self.sorted_children();
             children
-                .get(self.selected)
+                .get(child_idx)
                 .filter(|c| c.is_dir)
                 .map(|c| c.path.clone())
         };
@@ -142,8 +160,12 @@ impl App {
     }
 
     pub fn selected_entry(&self) -> Option<&Entry> {
+        if self.has_parent() && self.selected == 0 {
+            return None;
+        }
+        let child_idx = self.selected - self.child_offset();
         let children = self.sorted_children();
-        children.get(self.selected).copied()
+        children.get(child_idx).copied()
     }
 
     pub fn toggle_help(&mut self) {

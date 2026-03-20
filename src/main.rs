@@ -206,7 +206,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                         app.scroll_offset = 0;
                     }
                     KeyCode::Char('G') => {
-                        let count = app.current_entry().children.len();
+                        let count = app.display_count();
                         if count > 0 {
                             app.selected = count - 1;
                         }
