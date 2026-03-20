@@ -3,7 +3,7 @@ mod scanner;
 mod ui;
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{absolute, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -34,14 +34,14 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let scan_path = cli
-        .path
-        .canonicalize()
-        .with_context(|| format!("Cannot access path: {}", cli.path.display()))?;
+    let scan_path = absolute(&cli.path)
+        .with_context(|| format!("Cannot resolve path: {}", cli.path.display()))?;
 
     if !scan_path.is_dir() {
         anyhow::bail!("{} is not a directory", scan_path.display());
     }
+
+    let scan_path = scan_path.to_path_buf();
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
