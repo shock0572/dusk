@@ -46,12 +46,10 @@ $(TARGETS):
 	fi
 	@echo "Built: $(DIST)/$(NAME)-$(VERSION)-$@"
 
-WIN_DIR = $(shell wslpath -w . 2>/dev/null)
-
 windows:
-	@echo "Building Windows MSVC binary natively via cmd.exe..."
+	@echo "Cross-compiling Windows MSVC binary via cargo-xwin..."
 	@mkdir -p $(DIST)
-	cmd.exe /C "cd /D $(WIN_DIR) && cargo build --release --target x86_64-pc-windows-msvc"
+	cargo xwin build --release --target x86_64-pc-windows-msvc
 	cp target/x86_64-pc-windows-msvc/release/$(NAME).exe $(DIST)/$(NAME)-$(VERSION)-x86_64-pc-windows-msvc.exe
 	@echo "Built: $(DIST)/$(NAME)-$(VERSION)-x86_64-pc-windows-msvc.exe"
 
@@ -72,6 +70,6 @@ help:
 	@echo "  install    Install to cargo bin directory"
 	@echo "  uninstall  Remove from cargo bin directory"
 	@echo "  cross      Cross-compile for Linux, Windows (GNU), macOS"
-	@echo "  windows    Build Windows binary natively via MSVC (from WSL)"
+	@echo "  windows    Cross-compile Windows MSVC binary (requires: cargo install cargo-xwin)"
 	@echo "  dist       Cross-compile and collect binaries in dist/"
 	@echo "  help       Show this help"
