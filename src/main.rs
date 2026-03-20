@@ -10,7 +10,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -175,7 +175,9 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
             let mut last_key = None;
             while event::poll(Duration::from_millis(0))? {
                 if let Event::Key(k) = event::read()? {
-                    last_key = Some(k);
+                    if k.kind == KeyEventKind::Press {
+                        last_key = Some(k);
+                    }
                 } else {
                     break;
                 }
