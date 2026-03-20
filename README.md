@@ -8,7 +8,7 @@ A fast, interactive terminal disk usage analyzer. Think **ncdu**, but built in R
 - **Interactive TUI** — browse directories, drill in/out, see what's eating your disk
 - **Size bars** — visual proportional bars with color coding (green/yellow/red)
 - **Multiple sort modes** — sort by size, name, or item count
-- **Browsable `..`** — navigate up directories just like a file manager
+- **Browsable `..`** — navigate up directories just like a file manager, cursor starts on first real entry
 - **Delete files** — remove files/directories directly from the UI with confirmation
 - **Live scan progress** — animated spinner with real-time file count and size
 - **Symlink-safe** — skips symbolic links to avoid loops
