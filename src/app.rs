@@ -1,0 +1,220 @@
+use crate::scanner::Entry;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortBy {
+    Size,
+    Name,
+    Count,
+}
+
+impl SortBy {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SortBy::Size => "size",
+            SortBy::Name => "name",
+            SortBy::Count => "count",
+        }
+    }
+
+    pub fn next(&self) -> SortBy {
+        match self {
+            SortBy::Size => SortBy::Name,
+            SortBy::Name => SortBy::Count,
+            SortBy::Count => SortBy::Size,
+        }
+    }
+}
+
+pub struct App {
+    pub root: Entry,
+    pub path_stack: Vec<(usize, usize)>,
+    pub current_path: PathBuf,
+    pub selected: usize,
+    pub scroll_offset: usize,
+    pub sort_by: SortBy,
+    pub show_help: bool,
+    pub confirm_delete: Option<PathBuf>,
+    pub message: Option<(String, std::time::Instant)>,
+}
+
+impl App {
+    pub fn new(root: Entry) -> Self {
+        let current_path = root.path.clone();
+        Self {
+            root,
+            path_stack: Vec::new(),
+            current_path,
+            selected: 0,
+            scroll_offset: 0,
+            sort_by: SortBy::Size,
+            show_help: false,
+            confirm_delete: None,
+            message: None,
+        }
+    }
+
+    pub fn current_entry(&self) -> &Entry {
+        self.find_entry(&self.current_path).unwrap_or(&self.root)
+    }
+
+    fn find_entry(&self, path: &PathBuf) -> Option<&Entry> {
+        if self.root.path == *path {
+            return Some(&self.root);
+        }
+        Self::find_in_tree(&self.root, path)
+    }
+
+    fn find_in_tree<'a>(entry: &'a Entry, path: &PathBuf) -> Option<&'a Entry> {
+        for child in &entry.children {
+            if child.path == *path {
+                return Some(child);
+            }
+            if path.starts_with(&child.path) {
+                if let Some(found) = Self::find_in_tree(child, path) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn sorted_children(&self) -> Vec<&Entry> {
+        let entry = self.current_entry();
+        let mut kids: Vec<&Entry> = entry.children.iter().collect();
+        match self.sort_by {
+            SortBy::Size => kids.sort_by(|a, b| b.size.cmp(&a.size)),
+            SortBy::Name => kids.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
+            SortBy::Count => kids.sort_by(|a, b| b.child_count().cmp(&a.child_count())),
+        }
+        kids
+    }
+
+    pub fn move_down(&mut self) {
+        let count = self.current_entry().children.len();
+        if count > 0 && self.selected < count - 1 {
+            self.selected += 1;
+        }
+    }
+
+    pub fn move_up(&mut self) {
+        if self.selected > 0 {
+            self.selected -= 1;
+        }
+    }
+
+    pub fn page_down(&mut self, page_size: usize) {
+        let count = self.current_entry().children.len();
+        if count == 0 {
+            return;
+        }
+        self.selected = (self.selected + page_size).min(count - 1);
+    }
+
+    pub fn page_up(&mut self, page_size: usize) {
+        self.selected = self.selected.saturating_sub(page_size);
+    }
+
+    pub fn enter_selected(&mut self) {
+        let target = {
+            let children = self.sorted_children();
+            children
+                .get(self.selected)
+                .filter(|c| c.is_dir)
+                .map(|c| c.path.clone())
+        };
+        if let Some(path) = target {
+            self.path_stack.push((self.selected, self.scroll_offset));
+            self.current_path = path;
+            self.selected = 0;
+            self.scroll_offset = 0;
+        }
+    }
+
+    pub fn go_back(&mut self) {
+        if let Some((prev_selected, prev_offset)) = self.path_stack.pop() {
+            if let Some(parent) = self.current_path.parent() {
+                self.current_path = parent.to_path_buf();
+                self.selected = prev_selected;
+                self.scroll_offset = prev_offset;
+            }
+        }
+    }
+
+    pub fn selected_entry(&self) -> Option<&Entry> {
+        let children = self.sorted_children();
+        children.get(self.selected).copied()
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+    }
+
+    pub fn set_message(&mut self, msg: String) {
+        self.message = Some((msg, std::time::Instant::now()));
+    }
+
+    pub fn tick_message(&mut self) {
+        if let Some((_, when)) = &self.message {
+            if when.elapsed().as_secs() >= 3 {
+                self.message = None;
+            }
+        }
+    }
+
+    pub fn request_delete(&mut self) {
+        if let Some(entry) = self.selected_entry() {
+            self.confirm_delete = Some(entry.path.clone());
+        }
+    }
+
+    pub fn confirm_delete_yes(&mut self) {
+        if let Some(path) = self.confirm_delete.take() {
+            let result = if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+
+            match result {
+                Ok(_) => {
+                    self.remove_from_tree(&path);
+                    let count = self.current_entry().children.len();
+                    if self.selected >= count && count > 0 {
+                        self.selected = count - 1;
+                    }
+                    self.set_message(format!("Deleted: {}", path.display()));
+                }
+                Err(e) => {
+                    self.set_message(format!("Error: {e}"));
+                }
+            }
+        }
+    }
+
+    pub fn confirm_delete_no(&mut self) {
+        self.confirm_delete = None;
+    }
+
+    fn remove_from_tree(&mut self, path: &PathBuf) {
+        Self::remove_entry(&mut self.root, path);
+    }
+
+    fn remove_entry(entry: &mut Entry, path: &PathBuf) -> bool {
+        let before_len = entry.children.len();
+        entry.children.retain(|c| c.path != *path);
+
+        if entry.children.len() < before_len {
+            entry.size = entry.children.iter().map(|c| c.size).sum();
+            return true;
+        }
+
+        for child in &mut entry.children {
+            if path.starts_with(&child.path) && Self::remove_entry(child, path) {
+                entry.size = entry.children.iter().map(|c| c.size).sum();
+                return true;
+            }
+        }
+        false
+    }
+}
