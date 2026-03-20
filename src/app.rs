@@ -144,7 +144,7 @@ impl App {
         if let Some(path) = target {
             self.path_stack.push((self.selected, self.scroll_offset));
             self.current_path = path;
-            self.selected = 0;
+            self.selected = 1;
             self.scroll_offset = 0;
         }
     }
