@@ -171,8 +171,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         terminal.draw(|f| ui::draw(f, app))?;
         app.tick_message();
 
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
+        if event::poll(Duration::from_millis(50))? {
+            let mut last_key = None;
+            while event::poll(Duration::from_millis(0))? {
+                if let Event::Key(k) = event::read()? {
+                    last_key = Some(k);
+                } else {
+                    break;
+                }
+            }
+            if let Some(key) = last_key {
                 if app.confirm_delete.is_some() {
                     match key.code {
                         KeyCode::Char('y') | KeyCode::Char('Y') => app.confirm_delete_yes(),
