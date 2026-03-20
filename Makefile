@@ -4,7 +4,7 @@ VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'
 TARGETS := x86_64-unknown-linux-gnu x86_64-pc-windows-gnu x86_64-apple-darwin
 DIST    := dist
 
-.PHONY: all build release clean install uninstall fmt lint test cross dist help
+.PHONY: all build release clean install uninstall fmt lint test cross dist windows help
 
 all: build
 
@@ -46,6 +46,15 @@ $(TARGETS):
 	fi
 	@echo "Built: $(DIST)/$(NAME)-$(VERSION)-$@"
 
+WIN_DIR = $(shell wslpath -w . 2>/dev/null)
+
+windows:
+	@echo "Building Windows MSVC binary natively via cmd.exe..."
+	@mkdir -p $(DIST)
+	cmd.exe /C "cd /D $(WIN_DIR) && cargo build --release --target x86_64-pc-windows-msvc"
+	cp target/x86_64-pc-windows-msvc/release/$(NAME).exe $(DIST)/$(NAME)-$(VERSION)-x86_64-pc-windows-msvc.exe
+	@echo "Built: $(DIST)/$(NAME)-$(VERSION)-x86_64-pc-windows-msvc.exe"
+
 dist: cross
 	@echo "All binaries in $(DIST)/"
 	@ls -lh $(DIST)/
@@ -62,6 +71,7 @@ help:
 	@echo "  clean      Remove build artifacts"
 	@echo "  install    Install to cargo bin directory"
 	@echo "  uninstall  Remove from cargo bin directory"
-	@echo "  cross      Cross-compile for Linux, Windows, macOS"
+	@echo "  cross      Cross-compile for Linux, Windows (GNU), macOS"
+	@echo "  windows    Build Windows binary natively via MSVC (from WSL)"
 	@echo "  dist       Cross-compile and collect binaries in dist/"
 	@echo "  help       Show this help"
