@@ -26,6 +26,12 @@ impl SortBy {
     }
 }
 
+pub enum AppAction {
+    Continue,
+    Quit,
+    Rescan { path: PathBuf, came_from: String },
+}
+
 pub struct App {
     pub root: Entry,
     pub path_stack: Vec<(usize, usize)>,
@@ -54,6 +60,19 @@ impl App {
         }
     }
 
+    pub fn new_with_selection(root: Entry, select_name: &str) -> Self {
+        let mut app = Self::new(root);
+        let children = app.sorted_children();
+        let offset = app.child_offset();
+        for (i, child) in children.iter().enumerate() {
+            if child.name == select_name {
+                app.selected = i + offset;
+                break;
+            }
+        }
+        app
+    }
+
     pub fn current_entry(&self) -> &Entry {
         self.find_entry(&self.current_path).unwrap_or(&self.root)
     }
@@ -79,8 +98,15 @@ impl App {
         None
     }
 
+    fn has_filesystem_parent(&self) -> bool {
+        match self.current_path.parent() {
+            Some(parent) => parent != self.current_path && !parent.as_os_str().is_empty(),
+            None => false,
+        }
+    }
+
     pub fn has_parent(&self) -> bool {
-        !self.path_stack.is_empty()
+        !self.path_stack.is_empty() || self.has_filesystem_parent()
     }
 
     fn child_offset(&self) -> usize {
@@ -127,10 +153,9 @@ impl App {
         self.selected = self.selected.saturating_sub(page_size);
     }
 
-    pub fn enter_selected(&mut self) {
+    pub fn enter_selected(&mut self) -> AppAction {
         if self.has_parent() && self.selected == 0 {
-            self.go_back();
-            return;
+            return self.go_up();
         }
 
         let child_idx = self.selected - self.child_offset();
@@ -147,9 +172,26 @@ impl App {
             self.selected = 1;
             self.scroll_offset = 0;
         }
+        AppAction::Continue
     }
 
-    pub fn go_back(&mut self) {
+    pub fn go_up(&mut self) -> AppAction {
+        if !self.path_stack.is_empty() {
+            self.go_back();
+            AppAction::Continue
+        } else if self.has_filesystem_parent() {
+            let came_from = self.root.name.clone();
+            let parent = self.current_path.parent().unwrap().to_path_buf();
+            AppAction::Rescan {
+                path: parent,
+                came_from,
+            }
+        } else {
+            AppAction::Continue
+        }
+    }
+
+    fn go_back(&mut self) {
         if let Some((prev_selected, prev_offset)) = self.path_stack.pop() {
             if let Some(parent) = self.current_path.parent() {
                 self.current_path = parent.to_path_buf();

@@ -16,7 +16,7 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
-use crate::app::App;
+use crate::app::{App, AppAction};
 use crate::scanner::{scan_directory, ScanProgress};
 
 #[derive(Parser)]
@@ -34,45 +34,61 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let scan_path = absolute(&cli.path)
-        .with_context(|| format!("Cannot resolve path: {}", cli.path.display()))?;
+    let mut scan_path = absolute(&cli.path)
+        .with_context(|| format!("Cannot resolve path: {}", cli.path.display()))?
+        .to_path_buf();
 
     if !scan_path.is_dir() {
         anyhow::bail!("{} is not a directory", scan_path.display());
     }
 
-    let scan_path = scan_path.to_path_buf();
+    let mut select_name: Option<String> = None;
 
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    loop {
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
 
-    let result = run_scan_phase(&mut terminal, &scan_path);
+        let result = run_scan_phase(&mut terminal, &scan_path);
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+        match result {
+            Ok(Some(root)) => {
+                let mut app = match select_name.take() {
+                    Some(ref name) => App::new_with_selection(root, name),
+                    None => App::new(root),
+                };
 
-    match result {
-        Ok(Some(root)) => {
-            enable_raw_mode()?;
-            execute!(io::stdout(), EnterAlternateScreen)?;
-            let backend = CrosstermBackend::new(io::stdout());
-            let mut terminal = Terminal::new(backend)?;
-
-            let mut app = App::new(root);
-            let res = run_app(&mut terminal, &mut app);
-
-            disable_raw_mode()?;
-            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-            terminal.show_cursor()?;
-
-            res
+                match run_app(&mut terminal, &mut app)? {
+                    AppAction::Quit | AppAction::Continue => {
+                        disable_raw_mode()?;
+                        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+                        terminal.show_cursor()?;
+                        return Ok(());
+                    }
+                    AppAction::Rescan { path, came_from } => {
+                        scan_path = path;
+                        select_name = Some(came_from);
+                        disable_raw_mode()?;
+                        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+                        terminal.show_cursor()?;
+                    }
+                }
+            }
+            Ok(None) => {
+                disable_raw_mode()?;
+                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+                terminal.show_cursor()?;
+                return Ok(());
+            }
+            Err(e) => {
+                disable_raw_mode()?;
+                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+                terminal.show_cursor()?;
+                return Err(e);
+            }
         }
-        Ok(None) => Ok(()),
-        Err(e) => Err(e),
     }
 }
 
@@ -166,7 +182,10 @@ fn run_scan_phase(
     }
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> Result<AppAction> {
     loop {
         terminal.draw(|f| ui::draw(f, app))?;
         app.tick_message();
@@ -197,17 +216,23 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                 }
 
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                    KeyCode::Char('q') | KeyCode::Esc => return Ok(AppAction::Quit),
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Ok(())
+                        return Ok(AppAction::Quit)
                     }
                     KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                     KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                     KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
-                        app.enter_selected();
+                        let action = app.enter_selected();
+                        if matches!(action, AppAction::Rescan { .. }) {
+                            return Ok(action);
+                        }
                     }
                     KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
-                        app.go_back();
+                        let action = app.go_up();
+                        if matches!(action, AppAction::Rescan { .. }) {
+                            return Ok(action);
+                        }
                     }
                     KeyCode::PageDown => app.page_down(20),
                     KeyCode::PageUp => app.page_up(20),
