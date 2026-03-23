@@ -1,6 +1,6 @@
 [package]
 name = "dusk"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2024"
 description = "DUSK - Disk Usage Survey Kit. An interactive TUI disk usage analyzer."
 license = "MIT"
