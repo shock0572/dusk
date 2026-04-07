@@ -1,3 +1,4 @@
+use crate::report;
 use crate::scanner::Entry;
 use std::path::PathBuf;
 
@@ -45,6 +46,7 @@ pub struct App {
     pub confirm_delete: Option<PathBuf>,
     pub message: Option<(String, std::time::Instant)>,
     pub min_bytes: u64,
+    pub cached_report: Option<String>,
 }
 
 impl App {
@@ -63,6 +65,7 @@ impl App {
             confirm_delete: None,
             message: None,
             min_bytes,
+            cached_report: None,
         }
     }
 
@@ -127,9 +130,14 @@ impl App {
         let entry = self.current_entry();
         let mut kids: Vec<&Entry> = entry.children.iter().collect();
         match self.sort_by {
-            SortBy::Size => kids.sort_by(|a, b| b.size.cmp(&a.size)),
-            SortBy::Name => kids.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
-            SortBy::Count => kids.sort_by(|a, b| b.child_count().cmp(&a.child_count())),
+            SortBy::Size => kids.sort_unstable_by(|a, b| b.size.cmp(&a.size)),
+            SortBy::Name => kids.sort_unstable_by(|a, b| {
+                a.name
+                    .bytes()
+                    .map(|c| c.to_ascii_lowercase())
+                    .cmp(b.name.bytes().map(|c| c.to_ascii_lowercase()))
+            }),
+            SortBy::Count => kids.sort_unstable_by(|a, b| b.child_count().cmp(&a.child_count())),
         }
         kids
     }
@@ -214,6 +222,18 @@ impl App {
         let child_idx = self.selected - self.child_offset();
         let children = self.sorted_children();
         children.get(child_idx).copied()
+    }
+
+    pub fn open_report(&mut self) {
+        let text = report::generate_report(self.current_entry(), self.min_bytes);
+        self.cached_report = Some(text);
+        self.show_report = true;
+        self.report_scroll = 0;
+    }
+
+    pub fn close_report(&mut self) {
+        self.show_report = false;
+        self.cached_report = None;
     }
 
     pub fn toggle_help(&mut self) {

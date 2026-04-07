@@ -74,33 +74,35 @@ pub fn scan_directory(path: &Path, progress: &ScanProgress) -> Entry {
     };
 
     let children: Vec<Entry> = entries
-        .par_iter()
+        .into_par_iter()
         .filter_map(|dir_entry| {
             if progress.cancelled.load(Ordering::Relaxed) {
                 return None;
             }
 
-            let entry_path = dir_entry.path();
-            let meta = match dir_entry.metadata() {
-                Ok(m) => m,
+            let file_type = match dir_entry.file_type() {
+                Ok(ft) => ft,
                 Err(_) => return None,
             };
 
-            if meta.is_symlink() {
+            if file_type.is_symlink() {
                 return None;
             }
 
-            let entry_name = dir_entry.file_name().to_string_lossy().to_string();
+            let entry_path = dir_entry.path();
 
-            if meta.is_dir() {
+            if file_type.is_dir() {
                 Some(scan_directory(&entry_path, progress))
             } else {
-                let size = meta.len();
+                let size = match dir_entry.metadata() {
+                    Ok(m) => m.len(),
+                    Err(_) => return None,
+                };
                 progress.files_scanned.fetch_add(1, Ordering::Relaxed);
                 progress.bytes_scanned.fetch_add(size, Ordering::Relaxed);
 
                 Some(Entry {
-                    name: entry_name,
+                    name: dir_entry.file_name().to_string_lossy().into_owned(),
                     path: entry_path,
                     size,
                     is_dir: false,

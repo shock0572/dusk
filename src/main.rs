@@ -237,7 +237,7 @@ fn run_app(
                 if app.show_report {
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('r') | KeyCode::Char('q') => {
-                            app.show_report = false;
+                            app.close_report();
                         }
                         KeyCode::Down | KeyCode::Char('j') => app.report_scroll += 1,
                         KeyCode::Up | KeyCode::Char('k') => {
@@ -250,11 +250,11 @@ fn run_app(
                         KeyCode::Char('w') => {
                             match report::export_report(app.current_entry(), app.min_bytes) {
                                 Ok(path) => {
-                                    app.show_report = false;
+                                    app.close_report();
                                     app.set_message(format!("Report saved: {}", path.display()));
                                 }
                                 Err(e) => {
-                                    app.show_report = false;
+                                    app.close_report();
                                     app.set_message(format!("Report error: {e}"));
                                 }
                             }
@@ -307,8 +307,7 @@ fn run_app(
                         app.request_delete();
                     }
                     KeyCode::Char('r') => {
-                        app.show_report = true;
-                        app.report_scroll = 0;
+                        app.open_report();
                     }
                     KeyCode::Char('?') => {
                         app.toggle_help();

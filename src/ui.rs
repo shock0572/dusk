@@ -7,7 +7,6 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::report;
 use crate::scanner::Entry;
 
 const BAR_WIDTH: usize = 20;
@@ -308,15 +307,15 @@ fn draw_delete_confirm(f: &mut Frame, app: &App) {
 }
 
 fn draw_report_view(f: &mut Frame, app: &App, area: Rect) {
-    let current = app.current_entry();
-    let report_text = report::generate_report(current, app.min_bytes);
+    let report_text = match &app.cached_report {
+        Some(r) => r.as_str(),
+        None => return,
+    };
     let lines: Vec<Line> = report_text
         .lines()
-        .collect::<Vec<_>>()
-        .iter()
         .skip(app.report_scroll)
         .take(area.height as usize)
-        .map(|l| Line::from(Span::raw(l.to_string())))
+        .map(Line::from)
         .collect();
 
     let para = Paragraph::new(lines);
