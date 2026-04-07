@@ -42,10 +42,11 @@ pub struct App {
     pub show_help: bool,
     pub confirm_delete: Option<PathBuf>,
     pub message: Option<(String, std::time::Instant)>,
+    pub min_bytes: u64,
 }
 
 impl App {
-    pub fn new(root: Entry) -> Self {
+    pub fn new(root: Entry, min_bytes: u64) -> Self {
         let current_path = root.path.clone();
         Self {
             root,
@@ -57,11 +58,12 @@ impl App {
             show_help: false,
             confirm_delete: None,
             message: None,
+            min_bytes,
         }
     }
 
-    pub fn new_with_selection(root: Entry, select_name: &str) -> Self {
-        let mut app = Self::new(root);
+    pub fn new_with_selection(root: Entry, select_name: &str, min_bytes: u64) -> Self {
+        let mut app = Self::new(root, min_bytes);
         let children = app.sorted_children();
         let offset = app.child_offset();
         for (i, child) in children.iter().enumerate() {

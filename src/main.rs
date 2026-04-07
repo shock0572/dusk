@@ -1,4 +1,5 @@
 mod app;
+mod report;
 mod scanner;
 mod ui;
 
@@ -29,6 +30,14 @@ struct Cli {
     /// Directory to scan (defaults to current directory)
     #[arg(default_value = ".")]
     path: PathBuf,
+
+    /// Print a size report to stdout instead of launching the TUI
+    #[arg(long, short)]
+    report: bool,
+
+    /// Minimum size to include in reports (in GiB, default: 1)
+    #[arg(long, default_value = "1")]
+    min_gib: f64,
 }
 
 fn main() -> Result<()> {
@@ -40,6 +49,12 @@ fn main() -> Result<()> {
 
     if !scan_path.is_dir() {
         anyhow::bail!("{} is not a directory", scan_path.display());
+    }
+
+    let min_bytes = (cli.min_gib * 1_073_741_824.0) as u64;
+
+    if cli.report {
+        return run_report_mode(&scan_path, min_bytes);
     }
 
     let mut select_name: Option<String> = None;
@@ -56,8 +71,8 @@ fn main() -> Result<()> {
         match result {
             Ok(Some(root)) => {
                 let mut app = match select_name.take() {
-                    Some(ref name) => App::new_with_selection(root, name),
-                    None => App::new(root),
+                    Some(ref name) => App::new_with_selection(root, name, min_bytes),
+                    None => App::new(root, min_bytes),
                 };
 
                 match run_app(&mut terminal, &mut app)? {
@@ -90,6 +105,15 @@ fn main() -> Result<()> {
             }
         }
     }
+}
+
+fn run_report_mode(path: &PathBuf, min_bytes: u64) -> Result<()> {
+    let progress = ScanProgress::new();
+    eprintln!("Scanning {}...", path.display());
+    let root = scan_directory(path, &progress);
+    let report = report::generate_report(&root, min_bytes);
+    print!("{report}");
+    Ok(())
 }
 
 fn run_scan_phase(
@@ -251,6 +275,12 @@ fn run_app(
                     }
                     KeyCode::Char('d') => {
                         app.request_delete();
+                    }
+                    KeyCode::Char('r') => {
+                        match report::export_report(&app.root, app.min_bytes) {
+                            Ok(path) => app.set_message(format!("Report saved: {}", path.display())),
+                            Err(e) => app.set_message(format!("Report error: {e}")),
+                        }
                     }
                     KeyCode::Char('?') => {
                         app.toggle_help();
