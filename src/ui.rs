@@ -33,15 +33,17 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     draw_header(f, app, chunks[0]);
-    draw_file_list(f, app, chunks[1]);
-    draw_footer(f, app, chunks[2]);
+
+    if app.show_report {
+        draw_report_view(f, app, chunks[1]);
+        draw_report_footer(f, chunks[2]);
+    } else {
+        draw_file_list(f, app, chunks[1]);
+        draw_footer(f, app, chunks[2]);
+    }
 
     if app.show_help {
         draw_help_popup(f);
-    }
-
-    if app.show_report {
-        draw_report_popup(f, app);
     }
 
     if app.confirm_delete.is_some() {
@@ -305,42 +307,32 @@ fn draw_delete_confirm(f: &mut Frame, app: &App) {
     f.render_widget(para, area);
 }
 
-fn draw_report_popup(f: &mut Frame, app: &App) {
-    let area = centered_rect(80, 80, f.area());
-    f.render_widget(Clear, area);
-
-    let report_text = report::generate_report(&app.root, app.min_bytes);
+fn draw_report_view(f: &mut Frame, app: &App, area: Rect) {
+    let current = app.current_entry();
+    let report_text = report::generate_report(current, app.min_bytes);
     let lines: Vec<Line> = report_text
         .lines()
+        .collect::<Vec<_>>()
+        .iter()
         .skip(app.report_scroll)
+        .take(area.height as usize)
         .map(|l| Line::from(Span::raw(l.to_string())))
         .collect();
 
-    let inner_height = area.height.saturating_sub(2) as usize;
-    let total_lines = report_text.lines().count();
-    let scroll_info = format!(
-        " Lines {}-{} of {} | ↑↓ scroll | Esc/r close | w save to file ",
-        app.report_scroll + 1,
-        (app.report_scroll + inner_height).min(total_lines),
-        total_lines,
-    );
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
-        .title(Span::styled(
-            " Size Report ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .title_bottom(Line::from(Span::styled(
-            scroll_info,
-            Style::default().fg(Color::DarkGray),
-        )));
-
-    let para = Paragraph::new(lines).block(block);
+    let para = Paragraph::new(lines);
     f.render_widget(para, area);
+}
+
+fn draw_report_footer(f: &mut Frame, area: Rect) {
+    let text = Line::from(vec![
+        Span::styled(" ↑↓", Style::default().fg(Color::Yellow)),
+        Span::raw(" scroll  "),
+        Span::styled("w", Style::default().fg(Color::Yellow)),
+        Span::raw(" save to file  "),
+        Span::styled("Esc/r", Style::default().fg(Color::Yellow)),
+        Span::raw(" close report"),
+    ]);
+    f.render_widget(Paragraph::new(text), area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

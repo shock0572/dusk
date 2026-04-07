@@ -248,7 +248,7 @@ fn run_app(
                             app.report_scroll = app.report_scroll.saturating_sub(20);
                         }
                         KeyCode::Char('w') => {
-                            match report::export_report(&app.root, app.min_bytes) {
+                            match report::export_report(app.current_entry(), app.min_bytes) {
                                 Ok(path) => {
                                     app.show_report = false;
                                     app.set_message(format!("Report saved: {}", path.display()));
