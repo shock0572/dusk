@@ -234,6 +234,36 @@ fn run_app(
                     continue;
                 }
 
+                if app.show_report {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('r') | KeyCode::Char('q') => {
+                            app.show_report = false;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => app.report_scroll += 1,
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.report_scroll = app.report_scroll.saturating_sub(1);
+                        }
+                        KeyCode::PageDown => app.report_scroll += 20,
+                        KeyCode::PageUp => {
+                            app.report_scroll = app.report_scroll.saturating_sub(20);
+                        }
+                        KeyCode::Char('w') => {
+                            match report::export_report(&app.root, app.min_bytes) {
+                                Ok(path) => {
+                                    app.show_report = false;
+                                    app.set_message(format!("Report saved: {}", path.display()));
+                                }
+                                Err(e) => {
+                                    app.show_report = false;
+                                    app.set_message(format!("Report error: {e}"));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 if app.show_help {
                     app.show_help = false;
                     continue;
@@ -277,10 +307,8 @@ fn run_app(
                         app.request_delete();
                     }
                     KeyCode::Char('r') => {
-                        match report::export_report(&app.root, app.min_bytes) {
-                            Ok(path) => app.set_message(format!("Report saved: {}", path.display())),
-                            Err(e) => app.set_message(format!("Report error: {e}")),
-                        }
+                        app.show_report = true;
+                        app.report_scroll = 0;
                     }
                     KeyCode::Char('?') => {
                         app.toggle_help();

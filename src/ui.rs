@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::app::App;
+use crate::report;
 use crate::scanner::Entry;
 
 const BAR_WIDTH: usize = 20;
@@ -37,6 +38,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     if app.show_help {
         draw_help_popup(f);
+    }
+
+    if app.show_report {
+        draw_report_popup(f, app);
     }
 
     if app.confirm_delete.is_some() {
@@ -297,6 +302,44 @@ fn draw_delete_confirm(f: &mut Frame, app: &App) {
         ));
 
     let para = Paragraph::new(text).block(block);
+    f.render_widget(para, area);
+}
+
+fn draw_report_popup(f: &mut Frame, app: &App) {
+    let area = centered_rect(80, 80, f.area());
+    f.render_widget(Clear, area);
+
+    let report_text = report::generate_report(&app.root, app.min_bytes);
+    let lines: Vec<Line> = report_text
+        .lines()
+        .skip(app.report_scroll)
+        .map(|l| Line::from(Span::raw(l.to_string())))
+        .collect();
+
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let total_lines = report_text.lines().count();
+    let scroll_info = format!(
+        " Lines {}-{} of {} | ↑↓ scroll | Esc/r close | w save to file ",
+        app.report_scroll + 1,
+        (app.report_scroll + inner_height).min(total_lines),
+        total_lines,
+    );
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(Span::styled(
+            " Size Report ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .title_bottom(Line::from(Span::styled(
+            scroll_info,
+            Style::default().fg(Color::DarkGray),
+        )));
+
+    let para = Paragraph::new(lines).block(block);
     f.render_widget(para, area);
 }
 
