@@ -8,7 +8,8 @@ A fast, interactive terminal disk usage analyzer. Think **ncdu**, but built in R
 - **Interactive TUI** — browse directories, drill in/out, see what's eating your disk
 - **Size bars** — visual proportional bars with color coding (green/yellow/red)
 - **Multiple sort modes** — sort by size, name, or item count
-- **Browsable `..`** — navigate up directories just like a file manager, cursor starts on first real entry
+- **Browsable `..`** — navigate up directories freely, even above the original scan path (rescans automatically)
+- **Size report** — view a full tree report in the TUI or export to stdout/file, filtered by minimum size
 - **Delete files** — remove files/directories directly from the UI with confirmation
 - **Live scan progress** — animated spinner with real-time file count and size
 - **Symlink-safe** — skips symbolic links to avoid loops
@@ -47,6 +48,12 @@ dusk
 dusk /home/user/projects
 dusk C:\Users
 
+# Print a size report to stdout (no TUI, entries >= 1 GiB)
+dusk --report C:\
+
+# Report with custom threshold (e.g. 5 GiB)
+dusk --report C:\ --min-gib 5
+
 # Show help
 dusk --help
 ```
@@ -59,13 +66,23 @@ dusk --help
 | `↓` / `j` | Move down |
 | `Enter` / `→` / `l` | Open directory |
 | `Backspace` / `←` / `h` | Go back |
-| `..` | Navigate to parent directory |
+| `..` | Navigate to parent (rescans if above scan root) |
 | `PgUp` / `PgDn` | Page up / down |
 | `g` / `G` | Go to top / bottom |
 | `s` | Cycle sort mode (size → name → count) |
+| `r` | Open size report popup |
 | `d` | Delete selected (with confirmation) |
 | `?` | Toggle help overlay |
 | `q` / `Esc` | Quit |
+
+### Report popup
+
+| Key | Action |
+|---|---|
+| `↑↓` / `j/k` | Scroll |
+| `PgUp` / `PgDn` | Scroll by page |
+| `w` | Save report to file |
+| `Esc` / `r` / `q` | Close |
 
 ## Build Targets
 
