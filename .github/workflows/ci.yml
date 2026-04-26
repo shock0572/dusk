@@ -21,7 +21,7 @@ jobs:
           mkdir dist
           cp target/x86_64-pc-windows-msvc/release/dusk.exe dist/dusk-windows-x86_64.exe
         shell: bash
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dusk-windows-x86_64
           path: dist/dusk-windows-x86_64.exe
@@ -38,7 +38,7 @@ jobs:
       - run: |
           mkdir dist
           cp target/x86_64-unknown-linux-musl/release/dusk dist/dusk-linux-x86_64
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dusk-linux-x86_64
           path: dist/dusk-linux-x86_64
@@ -48,11 +48,11 @@ jobs:
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: DUSK ${{ github.ref_name }}
           files: |
