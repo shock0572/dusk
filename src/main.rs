@@ -4,21 +4,21 @@ mod scanner;
 mod ui;
 
 use std::io;
-use std::path::{absolute, PathBuf};
+use std::path::{Path, PathBuf, absolute};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::app::{App, AppAction};
-use crate::scanner::{scan_directory, ScanProgress};
+use crate::scanner::{ScanProgress, scan_directory};
 
 #[derive(Parser)]
 #[command(
@@ -36,7 +36,7 @@ struct Cli {
     report: bool,
 
     /// Minimum size to include in reports (in GiB, default: 1)
-    #[arg(long, default_value = "1")]
+    #[arg(long, default_value = "1", value_parser = parse_min_gib)]
     min_gib: f64,
 }
 
@@ -60,13 +60,9 @@ fn main() -> Result<()> {
     let mut select_name: Option<String> = None;
 
     loop {
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
+        let mut session = TerminalSession::new()?;
 
-        let result = run_scan_phase(&mut terminal, &scan_path);
+        let result = run_scan_phase(&mut session.terminal, &scan_path);
 
         match result {
             Ok(Some(root)) => {
@@ -75,42 +71,85 @@ fn main() -> Result<()> {
                     None => App::new(root, min_bytes),
                 };
 
-                match run_app(&mut terminal, &mut app)? {
+                match run_app(&mut session.terminal, &mut app)? {
                     AppAction::Quit | AppAction::Continue => {
-                        disable_raw_mode()?;
-                        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                        terminal.show_cursor()?;
                         return Ok(());
                     }
                     AppAction::Rescan { path, came_from } => {
                         scan_path = path;
                         select_name = Some(came_from);
-                        disable_raw_mode()?;
-                        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                        terminal.show_cursor()?;
                     }
                 }
             }
             Ok(None) => {
-                disable_raw_mode()?;
-                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                terminal.show_cursor()?;
                 return Ok(());
             }
             Err(e) => {
-                disable_raw_mode()?;
-                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                terminal.show_cursor()?;
                 return Err(e);
             }
         }
     }
 }
 
-fn run_report_mode(path: &PathBuf, min_bytes: u64) -> Result<()> {
+struct TerminalSession {
+    terminal: Terminal<CrosstermBackend<io::Stdout>>,
+}
+
+impl TerminalSession {
+    fn new() -> Result<Self> {
+        enable_raw_mode()?;
+
+        let mut stdout = io::stdout();
+        if let Err(err) = execute!(stdout, EnterAlternateScreen) {
+            let _ = disable_raw_mode();
+            return Err(err.into());
+        }
+
+        let backend = CrosstermBackend::new(stdout);
+        match Terminal::new(backend) {
+            Ok(terminal) => Ok(Self { terminal }),
+            Err(err) => {
+                let _ = disable_raw_mode();
+                let mut stdout = io::stdout();
+                let _ = execute!(stdout, LeaveAlternateScreen);
+                Err(err.into())
+            }
+        }
+    }
+}
+
+impl Drop for TerminalSession {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
+        let _ = self.terminal.show_cursor();
+    }
+}
+
+fn parse_min_gib(value: &str) -> Result<f64, String> {
+    let parsed: f64 = value
+        .parse()
+        .map_err(|_| "minimum size must be a number".to_string())?;
+
+    if !parsed.is_finite() || parsed < 0.0 {
+        return Err("minimum size must be a finite, non-negative number".to_string());
+    }
+
+    let max_gib = u64::MAX as f64 / 1_073_741_824.0;
+    if parsed > max_gib {
+        return Err(format!("minimum size must be at most {max_gib:.3} GiB"));
+    }
+
+    Ok(parsed)
+}
+
+fn run_report_mode(path: &Path, min_bytes: u64) -> Result<()> {
     let progress = ScanProgress::new();
     eprintln!("Scanning {}...", path.display());
     let root = scan_directory(path, &progress);
+    if root.error {
+        return Err(anyhow!("Cannot read directory: {}", path.display()));
+    }
     let report = report::generate_report(&root, min_bytes);
     print!("{report}");
     Ok(())
@@ -118,10 +157,10 @@ fn run_report_mode(path: &PathBuf, min_bytes: u64) -> Result<()> {
 
 fn run_scan_phase(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    path: &PathBuf,
+    path: &Path,
 ) -> Result<Option<scanner::Entry>> {
     let progress = ScanProgress::new();
-    let scan_path = path.clone();
+    let scan_path = path.to_path_buf();
     let files_counter = progress.files_scanned.clone();
     let bytes_counter = progress.bytes_scanned.clone();
     let cancelled = progress.cancelled.clone();
@@ -166,12 +205,8 @@ fn run_scan_phase(
                     ratatui::style::Style::default().fg(ratatui::style::Color::Cyan),
                 )),
                 ratatui::text::Line::from(""),
-                ratatui::text::Line::from(format!(
-                    "    Items scanned: {files:>10}"
-                )),
-                ratatui::text::Line::from(format!(
-                    "    Total size:    {size_str:>10}"
-                )),
+                ratatui::text::Line::from(format!("    Items scanned: {files:>10}")),
+                ratatui::text::Line::from(format!("    Total size:    {size_str:>10}")),
                 ratatui::text::Line::from(""),
                 ratatui::text::Line::from(ratatui::text::Span::styled(
                     "  Press 'q' or Esc to cancel",
@@ -183,18 +218,16 @@ fn run_scan_phase(
             f.render_widget(para, area);
         })?;
 
-        if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q')
-                    || key.code == KeyCode::Esc
-                    || (key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL))
-                {
-                    progress.cancelled.store(true, Ordering::Relaxed);
-                    let _ = scan_handle.join();
-                    return Ok(None);
-                }
-            }
+        if event::poll(Duration::from_millis(50))?
+            && let Event::Key(key) = event::read()?
+            && (key.code == KeyCode::Char('q')
+                || key.code == KeyCode::Esc
+                || (key.code == KeyCode::Char('c')
+                    && key.modifiers.contains(KeyModifiers::CONTROL)))
+        {
+            progress.cancelled.store(true, Ordering::Relaxed);
+            let _ = scan_handle.join();
+            return Ok(None);
         }
 
         if scan_handle.is_finished() {
@@ -272,7 +305,7 @@ fn run_app(
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(AppAction::Quit),
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Ok(AppAction::Quit)
+                        return Ok(AppAction::Quit);
                     }
                     KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                     KeyCode::Up | KeyCode::Char('k') => app.move_up(),
@@ -316,5 +349,23 @@ fn run_app(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_min_gib;
+
+    #[test]
+    fn min_gib_parser_rejects_invalid_values() {
+        assert!(parse_min_gib("-1").is_err());
+        assert!(parse_min_gib("NaN").is_err());
+        assert!(parse_min_gib("inf").is_err());
+    }
+
+    #[test]
+    fn min_gib_parser_accepts_non_negative_finite_values() {
+        assert_eq!(parse_min_gib("0").unwrap(), 0.0);
+        assert_eq!(parse_min_gib("1.5").unwrap(), 1.5);
     }
 }

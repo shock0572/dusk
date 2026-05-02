@@ -1,5 +1,6 @@
 use crate::report;
 use crate::scanner::Entry;
+use std::cmp::Reverse;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,10 +99,10 @@ impl App {
             if child.path == *path {
                 return Some(child);
             }
-            if path.starts_with(&child.path) {
-                if let Some(found) = Self::find_in_tree(child, path) {
-                    return Some(found);
-                }
+            if path.starts_with(&child.path)
+                && let Some(found) = Self::find_in_tree(child, path)
+            {
+                return Some(found);
             }
         }
         None
@@ -137,7 +138,7 @@ impl App {
                     .map(|c| c.to_ascii_lowercase())
                     .cmp(b.name.bytes().map(|c| c.to_ascii_lowercase()))
             }),
-            SortBy::Count => kids.sort_unstable_by(|a, b| b.child_count().cmp(&a.child_count())),
+            SortBy::Count => kids.sort_unstable_by_key(|entry| Reverse(entry.child_count())),
         }
         kids
     }
@@ -183,8 +184,12 @@ impl App {
         if let Some(path) = target {
             self.path_stack.push((self.selected, self.scroll_offset));
             self.current_path = path;
-            self.selected = 1;
             self.scroll_offset = 0;
+            self.selected = if self.current_entry().children.is_empty() {
+                0
+            } else {
+                self.child_offset()
+            };
         }
         AppAction::Continue
     }
@@ -206,12 +211,12 @@ impl App {
     }
 
     fn go_back(&mut self) {
-        if let Some((prev_selected, prev_offset)) = self.path_stack.pop() {
-            if let Some(parent) = self.current_path.parent() {
-                self.current_path = parent.to_path_buf();
-                self.selected = prev_selected;
-                self.scroll_offset = prev_offset;
-            }
+        if let Some((prev_selected, prev_offset)) = self.path_stack.pop()
+            && let Some(parent) = self.current_path.parent()
+        {
+            self.current_path = parent.to_path_buf();
+            self.selected = prev_selected;
+            self.scroll_offset = prev_offset;
         }
     }
 
@@ -245,10 +250,10 @@ impl App {
     }
 
     pub fn tick_message(&mut self) {
-        if let Some((_, when)) = &self.message {
-            if when.elapsed().as_secs() >= 3 {
-                self.message = None;
-            }
+        if let Some((_, when)) = &self.message
+            && when.elapsed().as_secs() >= 3
+        {
+            self.message = None;
         }
     }
 
@@ -269,9 +274,9 @@ impl App {
             match result {
                 Ok(_) => {
                     self.remove_from_tree(&path);
-                    let count = self.current_entry().children.len();
-                    if self.selected >= count && count > 0 {
-                        self.selected = count - 1;
+                    let count = self.display_count();
+                    if self.selected >= count {
+                        self.selected = count.saturating_sub(1);
                     }
                     self.set_message(format!("Deleted: {}", path.display()));
                 }
@@ -306,5 +311,94 @@ impl App {
             }
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(path: &str, is_dir: bool, children: Vec<Entry>) -> Entry {
+        let size = children.iter().map(|child| child.size).sum();
+        Entry {
+            name: PathBuf::from(path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.to_string()),
+            path: PathBuf::from(path),
+            size,
+            is_dir,
+            children,
+            error: false,
+        }
+    }
+
+    #[test]
+    fn entering_empty_directory_selects_parent_row() {
+        let root = entry(
+            "/tmp/dusk-root",
+            true,
+            vec![entry("/tmp/dusk-root/empty", true, Vec::new())],
+        );
+        let mut app = App::new(root, 0);
+        app.selected = 1;
+
+        let action = app.enter_selected();
+
+        assert!(matches!(action, AppAction::Continue));
+        assert_eq!(app.current_path, PathBuf::from("/tmp/dusk-root/empty"));
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.display_count(), 1);
+    }
+
+    #[test]
+    fn deleting_last_child_keeps_parent_row_selected() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "dusk-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let child_dir = temp_root.join("child");
+        let file_path = child_dir.join("file.txt");
+        std::fs::create_dir_all(&child_dir).unwrap();
+        std::fs::write(&file_path, "data").unwrap();
+
+        let root = Entry {
+            name: "dusk-test".to_string(),
+            path: temp_root.clone(),
+            size: 4,
+            is_dir: true,
+            children: vec![Entry {
+                name: "child".to_string(),
+                path: child_dir.clone(),
+                size: 4,
+                is_dir: true,
+                children: vec![Entry {
+                    name: "file.txt".to_string(),
+                    path: file_path.clone(),
+                    size: 4,
+                    is_dir: false,
+                    children: Vec::new(),
+                    error: false,
+                }],
+                error: false,
+            }],
+            error: false,
+        };
+        let mut app = App::new(root, 0);
+        app.current_path = child_dir;
+        app.path_stack.push((0, 0));
+        app.selected = 1;
+
+        app.request_delete();
+        app.confirm_delete_yes();
+
+        assert_eq!(app.display_count(), 1);
+        assert_eq!(app.selected, 0);
+        assert!(!file_path.exists());
+
+        let _ = std::fs::remove_dir_all(temp_root);
     }
 }

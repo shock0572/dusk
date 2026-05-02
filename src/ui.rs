@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Row, Table},
-    Frame,
 };
 
 use crate::app::App;
@@ -16,7 +16,7 @@ fn format_size(bytes: u64) -> String {
 }
 
 fn size_bar(ratio: f64, width: usize) -> String {
-    let filled = (ratio * width as f64).round() as usize;
+    let filled = ((ratio.clamp(0.0, 1.0)) * width as f64).round() as usize;
     let empty = width.saturating_sub(filled);
     format!("[{}{}]", "#".repeat(filled), " ".repeat(empty))
 }
@@ -58,11 +58,15 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         format_size(current.size)
     );
 
-    let items_info = format!(
-        "{} items, sorted by {}",
-        current.children.len(),
-        app.sort_by.label()
-    );
+    let items_info = if current.error {
+        "scan error: could not read directory".to_string()
+    } else {
+        format!(
+            "{} items, sorted by {}",
+            current.children.len(),
+            app.sort_by.label()
+        )
+    };
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -95,8 +99,12 @@ fn draw_file_list(f: &mut Frame, app: &mut App, area: Rect) {
     let children = app.sorted_children();
 
     if children.is_empty() && !has_parent {
-        let empty = Paragraph::new("  (empty directory)")
-            .style(Style::default().fg(Color::DarkGray));
+        let message = if app.current_entry().error {
+            "  (could not read directory)"
+        } else {
+            "  (empty directory)"
+        };
+        let empty = Paragraph::new(message).style(Style::default().fg(Color::DarkGray));
         f.render_widget(empty, area);
         return;
     }
@@ -151,12 +159,10 @@ fn entry_to_row<'a>(entry: &Entry, selected: bool, parent_size: f64) -> Row<'a> 
     let pct = ratio * 100.0;
     let bar = size_bar(ratio, BAR_WIDTH);
 
-    let icon = if entry.is_dir {
-        if entry.error {
-            "!"
-        } else {
-            "/"
-        }
+    let icon = if entry.error {
+        "!"
+    } else if entry.is_dir {
+        "/"
     } else {
         " "
     };
@@ -248,7 +254,7 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from("  Actions:"),
         Line::from("    s           Cycle sort mode (size/name/count)"),
         Line::from("    d           Delete selected file/directory"),
-        Line::from("    r           Export size report (entries >= 1 GiB)"),
+        Line::from("    r           Open size report popup"),
         Line::from("    ?           Toggle this help"),
         Line::from("    q/Esc       Quit"),
         Line::from(""),
@@ -282,9 +288,7 @@ fn draw_delete_confirm(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "  Really delete?",
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(format!("  {path_str}")),
@@ -297,9 +301,7 @@ fn draw_delete_confirm(f: &mut Frame, app: &App) {
         .border_style(Style::default().fg(Color::Red))
         .title(Span::styled(
             " Confirm Delete ",
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ));
 
     let para = Paragraph::new(text).block(block);

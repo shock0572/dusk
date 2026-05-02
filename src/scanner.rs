@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use rayon::prelude::*;
 
@@ -17,13 +17,8 @@ pub struct Entry {
 
 impl Entry {
     pub fn child_count(&self) -> usize {
-        if self.is_dir {
-            self.children.len()
-        } else {
-            0
-        }
+        if self.is_dir { self.children.len() } else { 0 }
     }
-
 }
 
 pub struct ScanProgress {
@@ -59,8 +54,8 @@ pub fn scan_directory(path: &Path, progress: &ScanProgress) -> Entry {
         };
     }
 
-    let entries: Vec<fs::DirEntry> = match fs::read_dir(path) {
-        Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+    let entries = match fs::read_dir(path) {
+        Ok(rd) => rd,
         Err(_) => {
             return Entry {
                 name,
@@ -74,35 +69,60 @@ pub fn scan_directory(path: &Path, progress: &ScanProgress) -> Entry {
     };
 
     let children: Vec<Entry> = entries
-        .into_par_iter()
+        .par_bridge()
         .filter_map(|dir_entry| {
             if progress.cancelled.load(Ordering::Relaxed) {
                 return None;
             }
 
+            let dir_entry = match dir_entry {
+                Ok(entry) => entry,
+                Err(_) => return None,
+            };
+            let entry_path = dir_entry.path();
+            let entry_name = dir_entry.file_name().to_string_lossy().into_owned();
+
             let file_type = match dir_entry.file_type() {
                 Ok(ft) => ft,
-                Err(_) => return None,
+                Err(_) => {
+                    progress.files_scanned.fetch_add(1, Ordering::Relaxed);
+                    return Some(Entry {
+                        name: entry_name,
+                        path: entry_path,
+                        size: 0,
+                        is_dir: false,
+                        children: Vec::new(),
+                        error: true,
+                    });
+                }
             };
 
             if file_type.is_symlink() {
                 return None;
             }
 
-            let entry_path = dir_entry.path();
-
             if file_type.is_dir() {
                 Some(scan_directory(&entry_path, progress))
             } else {
                 let size = match dir_entry.metadata() {
                     Ok(m) => m.len(),
-                    Err(_) => return None,
+                    Err(_) => {
+                        progress.files_scanned.fetch_add(1, Ordering::Relaxed);
+                        return Some(Entry {
+                            name: entry_name,
+                            path: entry_path,
+                            size: 0,
+                            is_dir: false,
+                            children: Vec::new(),
+                            error: true,
+                        });
+                    }
                 };
                 progress.files_scanned.fetch_add(1, Ordering::Relaxed);
                 progress.bytes_scanned.fetch_add(size, Ordering::Relaxed);
 
                 Some(Entry {
-                    name: dir_entry.file_name().to_string_lossy().into_owned(),
+                    name: entry_name,
                     path: entry_path,
                     size,
                     is_dir: false,
