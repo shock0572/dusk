@@ -17,6 +17,12 @@ A fast, interactive terminal disk usage analyzer. Think **ncdu**, but built in R
 
 ## Installation
 
+### From a release
+
+Tagged releases build Linux, Windows, and macOS (Apple Silicon / aarch64)
+binaries through GitHub Actions. Download the artifact for your platform from the
+release, then place it somewhere on your `PATH`.
+
 ### From source
 
 ```bash
