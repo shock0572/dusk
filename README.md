@@ -25,6 +25,8 @@ release, then place it somewhere on your `PATH`.
 
 ### From source
 
+Rust 1.98.1 is pinned in `rust-toolchain.toml`; `rustup` installs it automatically when needed.
+
 ```bash
 cargo install --path .
 ```

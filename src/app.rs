@@ -131,7 +131,7 @@ impl App {
         let entry = self.current_entry();
         let mut kids: Vec<&Entry> = entry.children.iter().collect();
         match self.sort_by {
-            SortBy::Size => kids.sort_unstable_by(|a, b| b.size.cmp(&a.size)),
+            SortBy::Size => kids.sort_unstable_by_key(|entry| Reverse(entry.size)),
             SortBy::Name => kids.sort_unstable_by(|a, b| {
                 a.name
                     .bytes()

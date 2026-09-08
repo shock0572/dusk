@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::PathBuf;
@@ -31,7 +32,7 @@ fn write_tree(out: &mut String, entry: &Entry, min_bytes: u64, depth: usize) {
         .iter()
         .filter(|c| c.error || c.size >= min_bytes)
         .collect();
-    children.sort_by(|a, b| b.size.cmp(&a.size));
+    children.sort_by_key(|entry| Reverse(entry.size));
 
     for child in &children {
         let size_str = humansize::format_size(child.size, humansize::BINARY);
