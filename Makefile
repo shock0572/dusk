@@ -9,27 +9,27 @@ DIST    := dist
 all: build
 
 build:
-	cargo build
+	cargo build --locked
 
 release:
-	cargo build --release
+	cargo build --locked --release
 
 test:
-	cargo test
+	cargo test --locked
 
 fmt:
 	cargo fmt
 
 lint:
 	cargo fmt --check
-	cargo clippy -- -D warnings
+	cargo clippy --locked -- -D warnings
 
 clean:
 	cargo clean
 	rm -rf $(DIST)
 
 install: release
-	cargo install --path .
+	cargo install --locked --path .
 
 uninstall:
 	cargo uninstall $(NAME)
@@ -37,7 +37,7 @@ uninstall:
 cross: $(TARGETS)
 
 $(TARGETS):
-	cargo build --release --target $@
+	cargo build --locked --release --target $@
 	@mkdir -p $(DIST)
 	@if echo $@ | grep -q windows; then \
 		cp target/$@/release/$(NAME).exe $(DIST)/$(NAME)-$(VERSION)-$@.exe; \
@@ -49,7 +49,7 @@ $(TARGETS):
 windows:
 	@echo "Cross-compiling Windows MSVC binary via cargo-xwin..."
 	@mkdir -p $(DIST)
-	cargo xwin build --release --target x86_64-pc-windows-msvc
+	cargo xwin build --locked --release --target x86_64-pc-windows-msvc
 	cp target/x86_64-pc-windows-msvc/release/$(NAME).exe $(DIST)/$(NAME)-$(VERSION)-x86_64-pc-windows-msvc.exe
 	@echo "Built: $(DIST)/$(NAME)-$(VERSION)-x86_64-pc-windows-msvc.exe"
 
@@ -70,6 +70,6 @@ help:
 	@echo "  install    Install to cargo bin directory"
 	@echo "  uninstall  Remove from cargo bin directory"
 	@echo "  cross      Cross-compile for Linux, Windows (GNU), macOS"
-	@echo "  windows    Cross-compile Windows MSVC binary (requires: cargo install cargo-xwin)"
+	@echo "  windows    Cross-compile Windows MSVC binary (requires patched cargo-xwin; see README)"
 	@echo "  dist       Cross-compile and collect binaries in dist/"
 	@echo "  help       Show this help"

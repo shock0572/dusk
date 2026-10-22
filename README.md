@@ -25,10 +25,10 @@ release, then place it somewhere on your `PATH`.
 
 ### From source
 
-Rust 1.98.1 is pinned in `rust-toolchain.toml`; `rustup` installs it automatically when needed.
+Rust 1.99.1 is pinned in `rust-toolchain.toml`; `rustup` installs it automatically when needed.
 
 ```bash
-cargo install --path .
+cargo install --locked --path .
 ```
 
 ### Build manually
@@ -45,6 +45,16 @@ make dist
 ```
 
 The binary will be at `target/release/dusk` (or `dusk.exe` on Windows).
+
+Local `make windows` requires a separately patched `cargo-xwin`: its published
+0.23.1 lockfile is affected by CVE-2026-111943. Build the helper with `--locked`
+after updating `rustls-webpki` to 0.103.16, `webpki-roots` to 1.0.10, and
+`webpki-root-certs` to 1.0.10. Verify the patched lockfile and installed binary
+hashes; reinstalling the same published lockfile or checking only the helper
+version is insufficient. The native Windows CI build does not use this helper.
+See [the certificate-verification advisory](https://rustsec.org/advisories/RUSTSEC-2026-0382.html)
+and the [roots](https://rustsec.org/advisories/RUSTSEC-2026-0381.html) /
+[root-certs](https://rustsec.org/advisories/RUSTSEC-2026-0383.html) advisories.
 
 ## Usage
 
