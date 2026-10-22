@@ -55,6 +55,7 @@ jobs:
       - run: |
           brew update
           brew upgrade rustup
+          echo "$(brew --prefix rustup)/bin" >> "$GITHUB_PATH"
       - uses: dtolnay/rust-toolchain@1.99.1
       # macos-26 runs on Apple Silicon, so a plain release build produces a
       # native arm64 binary with no cross-compilation.
