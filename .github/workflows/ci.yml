@@ -52,7 +52,9 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
-      - run: rustup self update
+      - run: |
+          brew update
+          brew upgrade rustup
       - uses: dtolnay/rust-toolchain@1.99.1
       # macos-26 runs on Apple Silicon, so a plain release build produces a
       # native arm64 binary with no cross-compilation.
